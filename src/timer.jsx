@@ -1,22 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import alien1 from './assets/alien1.jpg';
-import alien2 from './assets/alien2.jpg';
-import alien3 from './assets/alien3.jpg';
-import alien4 from './assets/alien4.jpg';
-import alien5 from './assets/alien5.jpg';
-import iconImage from './assets/omnitrix.png';
-import activateSound from './assets/actiavte.mp3';
 
 const Timer = () => {
-  const alienImages = [null, alien1, alien2, alien3, alien4, alien5];
+  // Replace with your actual asset URLs
+  const alienImages = [
+    null,
+    'https://via.placeholder.com/600x600/4ade80/ffffff?text=Alien+1',
+    'https://via.placeholder.com/600x600/22c55e/ffffff?text=Alien+2',
+    'https://via.placeholder.com/600x600/16a34a/ffffff?text=Alien+3',
+    'https://via.placeholder.com/600x600/15803d/ffffff?text=Alien+4',
+    'https://via.placeholder.com/600x600/166534/ffffff?text=Alien+5'
+  ];
 
-  const [time, setTime] = useState(() => {
-    const savedTime = window.timerState?.time;
-    return savedTime !== undefined ? savedTime : 24 * 60 * 60;
-  });
-  const [isRunning, setIsRunning] = useState(() => {
-    return window.timerState?.isRunning || false;
-  });
+  const iconImageUrl = 'https://via.placeholder.com/128x128/4ade80/ffffff?text=Omnitrix';
+  const activateSoundUrl = 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg';
+
+  // API Configuration - UPDATE THIS WITH YOUR BACKEND URL
+  const API_BASE_URL = 'http://localhost:3001/api';
+  
+  const [time, setTime] = useState(24 * 60 * 60);
+  const [isRunning, setIsRunning] = useState(false);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [transitionType, setTransitionType] = useState('');
   const [showCelebration, setShowCelebration] = useState(false);
@@ -25,18 +27,105 @@ const Timer = () => {
   const [checkedAlarms, setCheckedAlarms] = useState(new Set());
   const [audioEnabled, setAudioEnabled] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [syncError, setSyncError] = useState(null);
+  
   const intervalRef = useRef(null);
   const alarmCheckRef = useRef(null);
   const audioRef = useRef(null);
+  const syncIntervalRef = useRef(null);
 
   const alarms = React.useMemo(() => [
     { time: "09:46", message: "Breakfast Time! Fuel up for the hackathon!", alien: 1 },
-    { time: "14:10", message: "Lunch Time! Take a break and recharge!", alien: 2 },
-    { time: "16:00", message: "Snack Break! Keep the energy flowing!", alien: 3 },
+    { time: "19:18", message: "Lunch Time! Take a break and recharge!", alien: 2 },
+    { time: "19:19", message: "Snack Break! Keep the energy flowing!", alien: 3 },
     { time: "20:00", message: "Dinner Time! Almost there, champion!", alien: 4 },
     { time: "23:00", message: "Midnight Snack! Push through the final stretch!", alien: 5 }
   ], []);
 
+  // Fetch timer state from backend
+  const fetchTimerState = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/timer`);
+      if (!response.ok) throw new Error('Failed to fetch timer state');
+      const data = await response.json();
+      
+      setTime(data.remainingTime);
+      setIsRunning(data.isRunning);
+      setSyncError(null);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching timer state:', error);
+      setSyncError('Unable to connect to server');
+      setIsLoading(false);
+    }
+  };
+
+  // Start timer on backend
+  const startTimer = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/timer/start`, {
+        method: 'POST'
+      });
+      if (!response.ok) throw new Error('Failed to start timer');
+      setIsRunning(true);
+      setSyncError(null);
+    } catch (error) {
+      console.error('Error starting timer:', error);
+      setSyncError('Failed to start timer on server');
+    }
+  };
+
+  // Stop timer on backend
+  const stopTimer = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/timer/stop`, {
+        method: 'POST'
+      });
+      if (!response.ok) throw new Error('Failed to stop timer');
+      const data = await response.json();
+      setTime(data.data.remainingTime);
+      setIsRunning(false);
+      setSyncError(null);
+    } catch (error) {
+      console.error('Error stopping timer:', error);
+      setSyncError('Failed to stop timer on server');
+    }
+  };
+
+  // Reset timer on backend
+  const resetTimer = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/timer/reset`, {
+        method: 'POST'
+      });
+      if (!response.ok) throw new Error('Failed to reset timer');
+      const data = await response.json();
+      setTime(data.data.remainingTime);
+      setIsRunning(false);
+      setSyncError(null);
+    } catch (error) {
+      console.error('Error resetting timer:', error);
+      setSyncError('Failed to reset timer on server');
+    }
+  };
+
+  // Initial fetch and periodic sync
+  useEffect(() => {
+    fetchTimerState();
+    
+    syncIntervalRef.current = setInterval(() => {
+      fetchTimerState();
+    }, 2000);
+
+    return () => {
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Audio enablement
   useEffect(() => {
     const enableAudio = () => {
       if (audioRef.current && !audioEnabled) {
@@ -64,13 +153,7 @@ const Timer = () => {
     };
   }, [audioEnabled]);
 
-  useEffect(() => {
-    window.timerState = {
-      time,
-      isRunning
-    };
-  }, [time, isRunning]);
-
+  // Alarm checking
   useEffect(() => {
     const checkAlarms = () => {
       const now = new Date();
@@ -141,30 +224,6 @@ const Timer = () => {
     }, 100000);
   };
 
-  useEffect(() => {
-    if (isRunning && time > 0) {
-      intervalRef.current = setInterval(() => {
-        setTime(prevTime => {
-          if (prevTime <= 0) {
-            setIsRunning(false);
-            return 0;
-          }
-          return prevTime - 1;
-        });
-      }, 1000);
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [isRunning, time]);
-
   const handleStart = () => {
     if (time > 0) {
       setTransitionType('powering');
@@ -174,7 +233,7 @@ const Timer = () => {
         setShowCelebration(true);
         setTimeout(() => {
           setShowCelebration(false);
-          setIsRunning(true);
+          startTimer();
         }, 5000);
       }, 2000);
     }
@@ -184,14 +243,13 @@ const Timer = () => {
     setTransitionType('pausing');
     setIsTransitioning(true);
     setTimeout(() => {
-      setIsRunning(false);
+      stopTimer();
       setIsTransitioning(false);
     }, 2000);
   };
 
   const handleReset = () => {
-    setIsRunning(false);
-    setTime(24 * 60 * 60);
+    resetTimer();
   };
 
   const toggleFullscreen = async () => {
@@ -232,11 +290,21 @@ const Timer = () => {
 
   const { hours, minutes, seconds } = formatTime(time);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen w-full bg-transparent flex items-center justify-center">
+        <div className="text-green-400 text-2xl font-bold animate-pulse">
+          Loading Omnitrix...
+        </div>
+      </div>
+    );
+  }
+
   const OmnitrixTransition = () => (
     <div className="flex flex-col items-center justify-center space-y-6">
       <div className="relative">
         <img
-          src={iconImage}
+          src={iconImageUrl}
           alt="Omnitrix Icon"
           className="w-32 h-32 object-contain animate-spin"
           style={{ animationDuration: '2s' }}
@@ -266,7 +334,6 @@ const Timer = () => {
   const CelebrationAnimation = () => (
     <div className="celebration-overlay">
       <div className="celebration-frame">
-        {/* Confetti */}
         {[...Array(150)].map((_, i) => {
           const randomX = Math.random() * 400 - 200;
           const randomRotate = Math.random() * 1080;
@@ -284,7 +351,6 @@ const Timer = () => {
             />
           );
         })}
-        {/* Petals */}
         {[...Array(100)].map((_, i) => {
           const midX = Math.random() * 100 - 50;
           const endX = Math.random() * 200 - 100;
@@ -306,7 +372,6 @@ const Timer = () => {
             />
           );
         })}
-        {/* Stars */}
         {[...Array(80)].map((_, i) => {
           const starX = Math.random() * 300 - 150;
           const starRotate = Math.random() * 720;
@@ -324,7 +389,6 @@ const Timer = () => {
             />
           );
         })}
-        {/* Sparkles */}
         {[...Array(60)].map((_, i) => (
           <div
             key={`sparkle-${i}`}
@@ -336,8 +400,6 @@ const Timer = () => {
             }}
           />
         ))}
-        
-        {/* Success Message */}
         <div className="success-message">
           <div className="success-icon">✓</div>
           <h2 className="success-title">OMNITRIX ACTIVATED!</h2>
@@ -378,18 +440,18 @@ const Timer = () => {
               </div>
             </div>
           </div>
-          
+
           <div className="alien-right-section">
             <div className="notification-header">
               <div className="notification-icon">🔔</div>
               <h2 className="notification-title">MEAL TIME NOTIFICATION</h2>
             </div>
-            
+
             <div className="notification-body">
               <div className="time-display">{currentAlarm.time}</div>
               <p className="notification-message">{currentAlarm.message}</p>
             </div>
-            
+
             {!audioEnabled && (
               <div className="audio-tip">Click anywhere to enable sound notifications</div>
             )}
@@ -409,7 +471,14 @@ const Timer = () => {
           </linearGradient>
         </defs>
       </svg>
-      <audio ref={audioRef} src={activateSound} preload="auto" playsInline />
+      <audio ref={audioRef} src={activateSoundUrl} preload="auto" playsInline />
+      
+      {syncError && (
+        <div className="fixed top-4 right-4 bg-red-500/20 border border-red-500 text-red-400 px-4 py-2 rounded-lg z-50">
+          {syncError}
+        </div>
+      )}
+      
       {currentAlarm && <AlienNotification />}
       {isTransitioning && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
@@ -440,9 +509,7 @@ const Timer = () => {
                   <circle className="circular-bg" cx="60" cy="60" r="54" />
                   <circle
                     className="circular-progress-bar"
-                    cx="60"
-                    cy="60"
-                    r="54"
+                    cx="60" cy="60" r="54"
                     style={{
                       strokeDashoffset: 339.292 - (339.292 * (parseInt(hours) / 24))
                     }}
@@ -458,9 +525,7 @@ const Timer = () => {
                   <circle className="circular-bg" cx="60" cy="60" r="54" />
                   <circle
                     className="circular-progress-bar"
-                    cx="60"
-                    cy="60"
-                    r="54"
+                    cx="60" cy="60" r="54"
                     style={{
                       strokeDashoffset: 339.292 - (339.292 * (parseInt(minutes) / 60))
                     }}
@@ -476,9 +541,7 @@ const Timer = () => {
                   <circle className="circular-bg" cx="60" cy="60" r="54" />
                   <circle
                     className="circular-progress-bar"
-                    cx="60"
-                    cy="60"
-                    r="54"
+                    cx="60" cy="60" r="54"
                     style={{
                       strokeDashoffset: 339.292 - (339.292 * (parseInt(seconds) / 60))
                     }}
@@ -501,27 +564,23 @@ const Timer = () => {
           <button onClick={handleReset} disabled={isTransitioning} className="control-button-small">
             Reset
           </button>
-          <button onClick={toggleFullscreen} className="control-button-small fullscreen-button">
-            {isFullscreen ? (
-              <span className="flex items-center gap-2">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
-                </svg>
-                Exit Fullscreen
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-                </svg>
-                Fullscreen
-              </span>
-            )}
-          </button>
         </div>
       </div>
+
+      <button onClick={toggleFullscreen} className="fullscreen-button">
+        {isFullscreen ? (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+          </svg>
+        ) : (
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+          </svg>
+        )}
+      </button>
+
       <style jsx>{`
-        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;600;700;900&family=Roboto:wght@400;500;700&display=swap');
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
         .min-h-screen {
@@ -541,12 +600,8 @@ const Timer = () => {
         }
 
         @keyframes celebrationFadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
+          from { opacity: 0; }
+          to { opacity: 1; }
         }
 
         .celebration-frame {
@@ -561,16 +616,9 @@ const Timer = () => {
         }
 
         @keyframes frameZoom {
-          0% {
-            transform: scale(3);
-            opacity: 0;
-          }
-          50% {
-            opacity: 1;
-          }
-          100% {
-            transform: scale(1);
-          }
+          0% { transform: scale(3); opacity: 0; }
+          50% { opacity: 1; }
+          100% { transform: scale(1); }
         }
 
         .confetti {
@@ -583,21 +631,11 @@ const Timer = () => {
           border-radius: 2px;
           box-shadow: 0 0 10px rgba(74, 222, 128, 0.8);
           will-change: transform, opacity;
-          --random-x: 0;
-          --random-rotate: 0;
         }
 
         @keyframes confettiFall {
-          0% {
-            top: -20px;
-            transform: translateX(0) rotate(0deg);
-            opacity: 1;
-          }
-          100% {
-            top: 120%;
-            transform: translateX(calc(var(--random-x, 0) * 1px)) rotate(calc(var(--random-rotate, 0) * 1deg));
-            opacity: 0;
-          }
+          0% { top: -20px; transform: translateX(0) rotate(0deg); opacity: 1; }
+          100% { top: 120%; transform: translateX(calc(var(--random-x, 0) * 1px)) rotate(calc(var(--random-rotate, 0) * 1deg)); opacity: 0; }
         }
 
         .petal {
@@ -614,19 +652,9 @@ const Timer = () => {
         }
 
         @keyframes petalFall {
-          0% {
-            top: -30px;
-            transform: translateX(0) translateY(0) rotate(0deg) scale(1);
-            opacity: 0.95;
-          }
-          50% {
-            transform: translateX(calc(var(--mid-x, 0) * 1px)) translateY(50vh) rotate(calc(var(--mid-rotate, 0) * 1deg)) scale(1.2);
-          }
-          100% {
-            top: 120%;
-            transform: translateX(calc(var(--end-x, 0) * 1px)) translateY(100vh) rotate(calc(var(--end-rotate, 0) * 1deg)) scale(0.8);
-            opacity: 0;
-          }
+          0% { top: -30px; transform: translateX(0) translateY(0) rotate(0deg) scale(1); opacity: 0.95; }
+          50% { transform: translateX(calc(var(--mid-x, 0) * 1px)) translateY(50vh) rotate(calc(var(--mid-rotate, 0) * 1deg)) scale(1.2); }
+          100% { top: 120%; transform: translateX(calc(var(--end-x, 0) * 1px)) translateY(100vh) rotate(calc(var(--end-rotate, 0) * 1deg)) scale(0.8); opacity: 0; }
         }
 
         .star {
@@ -655,16 +683,8 @@ const Timer = () => {
         }
 
         @keyframes starFall {
-          0% {
-            top: -20px;
-            transform: translateX(0) rotate(0deg);
-            opacity: 1;
-          }
-          100% {
-            top: 120%;
-            transform: translateX(calc(var(--star-x, 0) * 1px)) rotate(calc(var(--star-rotate, 0) * 1deg));
-            opacity: 0;
-          }
+          0% { top: -20px; transform: translateX(0) rotate(0deg); opacity: 1; }
+          100% { top: 120%; transform: translateX(calc(var(--star-x, 0) * 1px)) rotate(calc(var(--star-rotate, 0) * 1deg)); opacity: 0; }
         }
 
         .sparkle {
@@ -678,14 +698,8 @@ const Timer = () => {
         }
 
         @keyframes sparkleAnimation {
-          0%, 100% {
-            transform: scale(0);
-            opacity: 0;
-          }
-          50% {
-            transform: scale(2);
-            opacity: 1;
-          }
+          0%, 100% { transform: scale(0); opacity: 0; }
+          50% { transform: scale(2); opacity: 1; }
         }
 
         .success-message {
@@ -698,14 +712,8 @@ const Timer = () => {
         }
 
         @keyframes successZoom {
-          0% {
-            transform: scale(0) rotate(-180deg);
-            opacity: 0;
-          }
-          100% {
-            transform: scale(1) rotate(0deg);
-            opacity: 1;
-          }
+          0% { transform: scale(0) rotate(-180deg); opacity: 0; }
+          100% { transform: scale(1) rotate(0deg); opacity: 1; }
         }
 
         .success-icon {
@@ -724,14 +732,8 @@ const Timer = () => {
         }
 
         @keyframes successPulse {
-          0%, 100% {
-            transform: scale(1);
-            box-shadow: 0 0 40px rgba(74, 222, 128, 0.8), 0 0 80px rgba(74, 222, 128, 0.4);
-          }
-          50% {
-            transform: scale(1.1);
-            box-shadow: 0 0 60px rgba(74, 222, 128, 1), 0 0 100px rgba(74, 222, 128, 0.6);
-          }
+          0%, 100% { transform: scale(1); box-shadow: 0 0 40px rgba(74, 222, 128, 0.8), 0 0 80px rgba(74, 222, 128, 0.4); }
+          50% { transform: scale(1.1); box-shadow: 0 0 60px rgba(74, 222, 128, 1), 0 0 100px rgba(74, 222, 128, 0.6); }
         }
 
         .success-title {
@@ -746,12 +748,8 @@ const Timer = () => {
         }
 
         @keyframes textGlow {
-          0%, 100% {
-            text-shadow: 0 0 30px rgba(74, 222, 128, 0.8);
-          }
-          50% {
-            text-shadow: 0 0 50px rgba(74, 222, 128, 1), 0 0 70px rgba(74, 222, 128, 0.6);
-          }
+          0%, 100% { text-shadow: 0 0 30px rgba(74, 222, 128, 0.8); }
+          50% { text-shadow: 0 0 50px rgba(74, 222, 128, 1), 0 0 70px rgba(74, 222, 128, 0.6); }
         }
 
         .success-subtitle {
@@ -762,42 +760,13 @@ const Timer = () => {
         }
 
         @media (max-width: 768px) {
-          .success-icon {
-            width: 80px;
-            height: 80px;
-            font-size: 2.5rem;
-          }
-
-          .success-title {
-            font-size: 2rem;
-          }
-
-          .success-subtitle {
-            font-size: 1.125rem;
-          }
-
-          .confetti {
-            width: 10px;
-            height: 10px;
-          }
-
-          .petal {
-            width: 14px;
-            height: 14px;
-          }
-
-          .star {
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-bottom: 7px solid #4ade80;
-          }
-
-          .star::after {
-            left: -4px;
-            border-left: 4px solid transparent;
-            border-right: 4px solid transparent;
-            border-top: 7px solid #4ade80;
-          }
+          .success-icon { width: 80px; height: 80px; font-size: 2.5rem; }
+          .success-title { font-size: 2rem; }
+          .success-subtitle { font-size: 1.125rem; }
+          .confetti { width: 10px; height: 10px; }
+          .petal { width: 14px; height: 14px; }
+          .star { border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 7px solid #4ade80; }
+          .star::after { left: -4px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 7px solid #4ade80; }
         }
 
         .main-timer-container {
@@ -815,9 +784,7 @@ const Timer = () => {
         }
 
         @media (min-width: 768px) {
-          .main-timer-container {
-            gap: 3rem;
-          }
+          .main-timer-container { gap: 3rem; }
         }
 
         .hide-timer {
@@ -834,24 +801,15 @@ const Timer = () => {
         }
 
         @media (min-width: 640px) {
-          .circular-timer {
-            width: 120px;
-            height: 120px;
-          }
+          .circular-timer { width: 120px; height: 120px; }
         }
 
         @media (min-width: 768px) {
-          .circular-timer {
-            width: 140px;
-            height: 140px;
-          }
+          .circular-timer { width: 140px; height: 140px; }
         }
 
         @media (min-width: 1024px) {
-          .circular-timer {
-            width: 160px;
-            height: 160px;
-          }
+          .circular-timer { width: 160px; height: 160px; }
         }
 
         .circular-progress {
@@ -888,21 +846,15 @@ const Timer = () => {
         }
 
         @media (min-width: 640px) {
-          .circular-value {
-            font-size: 2.25rem;
-          }
+          .circular-value { font-size: 2.25rem; }
         }
 
         @media (min-width: 768px) {
-          .circular-value {
-            font-size: 2.5rem;
-          }
+          .circular-value { font-size: 2.5rem; }
         }
 
         @media (min-width: 1024px) {
-          .circular-value {
-            font-size: 3rem;
-          }
+          .circular-value { font-size: 3rem; }
         }
 
         .circular-label {
@@ -917,15 +869,11 @@ const Timer = () => {
         }
 
         @media (min-width: 640px) {
-          .circular-label {
-            font-size: 0.875rem;
-          }
+          .circular-label { font-size: 0.875rem; }
         }
 
         @media (min-width: 1024px) {
-          .circular-label {
-            font-size: 1rem;
-          }
+          .circular-label { font-size: 1rem; }
         }
 
         .control-button-small {
@@ -959,13 +907,29 @@ const Timer = () => {
         }
 
         .fullscreen-button {
+          position: fixed;
+          bottom: 1.5rem;
+          right: 1.5rem;
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
+          background: rgba(255, 255, 255, 0.1);
+          border: 2px solid rgba(255, 255, 255, 0.3);
+          color: #ffffff;
+          cursor: pointer;
+          backdrop-filter: blur(5px);
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+          transition: all 0.3s ease;
+          z-index: 50;
         }
-
-        .fullscreen-button svg {
-          flex-shrink: 0;
+        
+        .fullscreen-button:hover {
+          transform: scale(1.1);
+          background: rgba(255, 255, 255, 0.2);
+          border-color: rgba(255, 255, 255, 0.6);
         }
 
         .honeycomb-container {
@@ -987,18 +951,9 @@ const Timer = () => {
         }
 
         @keyframes hexagonFade {
-          0% {
-            opacity: 0;
-            transform: scale(0);
-          }
-          50% {
-            opacity: 1;
-            transform: scale(1.2);
-          }
-          100% {
-            opacity: 0;
-            transform: scale(1);
-          }
+          0% { opacity: 0; transform: scale(0); }
+          50% { opacity: 1; transform: scale(1.2); }
+          100% { opacity: 0; transform: scale(1); }
         }
 
         .alien-notification {
@@ -1021,21 +976,13 @@ const Timer = () => {
         }
 
         @keyframes notificationShow {
-          0% {
-            opacity: 0;
-          }
-          100% {
-            opacity: 1;
-          }
+          0% { opacity: 0; }
+          100% { opacity: 1; }
         }
 
         @keyframes notificationHide {
-          0% {
-            opacity: 1;
-          }
-          100% {
-            opacity: 0;
-          }
+          0% { opacity: 1; }
+          100% { opacity: 0; }
         }
 
         .alien-content-wrapper {
@@ -1184,53 +1131,41 @@ const Timer = () => {
         }
 
         @keyframes bellRing {
-          0%, 100% {
-            transform: rotate(0deg);
-          }
-          10% {
-            transform: rotate(-15deg);
-          }
-          20% {
-            transform: rotate(15deg);
-          }
-          30% {
-            transform: rotate(-10deg);
-          }
-          40% {
-            transform: rotate(10deg);
-          }
-          50% {
-            transform: rotate(0deg);
-          }
+          0%, 100% { transform: rotate(0deg); }
+          10% { transform: rotate(-15deg); }
+          20% { transform: rotate(15deg); }
+          30% { transform: rotate(-10deg); }
+          40% { transform: rotate(10deg); }
+          50% { transform: rotate(0deg); }
         }
 
         .notification-title {
-          font-family: 'Orbitron', monospace;
-          font-size: 3rem;
+          font-family: 'Roboto', sans-serif;
+          font-size: 2.5rem;
           font-weight: 700;
           color: #4ade80;
           line-height: 1.2;
-          letter-spacing: 0.05em;
+          letter-spacing: 0.02em;
           margin: 0;
-          text-shadow: 0 0 30px rgba(74, 222, 128, 0.6);
+          text-shadow: 0 0 20px rgba(74, 222, 128, 0.6);
         }
 
         @media (max-width: 1024px) {
           .notification-title {
-            font-size: 2.25rem;
+            font-size: 2rem;
           }
         }
 
         @media (max-width: 640px) {
           .notification-title {
-            font-size: 1.75rem;
+            font-size: 1.5rem;
           }
         }
 
         .notification-body {
           display: flex;
           flex-direction: column;
-          gap: 2rem;
+          gap: 1.5rem;
           align-items: flex-start;
         }
 
@@ -1262,9 +1197,9 @@ const Timer = () => {
         }
 
         .notification-message {
-          font-family: 'Inter', sans-serif;
-          font-size: 1.75rem;
-          font-weight: 500;
+          font-family: 'Roboto', sans-serif;
+          font-size: 1.25rem;
+          font-weight: 400;
           color: rgba(255, 255, 255, 0.95);
           line-height: 1.6;
           margin: 0;
@@ -1272,13 +1207,13 @@ const Timer = () => {
 
         @media (max-width: 1024px) {
           .notification-message {
-            font-size: 1.5rem;
+            font-size: 1.125rem;
           }
         }
 
         @media (max-width: 640px) {
           .notification-message {
-            font-size: 1.25rem;
+            font-size: 1rem;
           }
         }
 
@@ -1295,12 +1230,8 @@ const Timer = () => {
         }
 
         @keyframes subtlePulse {
-          0%, 100% {
-            opacity: 0.8;
-          }
-          50% {
-            opacity: 1;
-          }
+          0%, 100% { opacity: 0.8; }
+          50% { opacity: 1; }
         }
       `}</style>
     </div>
