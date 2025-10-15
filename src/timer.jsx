@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 
-const Timer = () => {
-  // Replace with your actual asset URLs
-  const alienImages = [
-    null,
-    'https://via.placeholder.com/600x600/4ade80/ffffff?text=Alien+1',
-    'https://via.placeholder.com/600x600/22c55e/ffffff?text=Alien+2',
-    'https://via.placeholder.com/600x600/16a34a/ffffff?text=Alien+3',
-    'https://via.placeholder.com/600x600/15803d/ffffff?text=Alien+4',
-    'https://via.placeholder.com/600x600/166534/ffffff?text=Alien+5'
-  ];
+import alien1 from './assets/alien1.jpg';
+import alien2 from './assets/alien2.jpg';
+import alien3 from './assets/alien3.jpg';
+import alien4 from './assets/alien4.jpg';
+import alien5 from './assets/alien5.jpg';
+import iconImage from './assets/omnitrix.png';
+import activateSound from './assets/actiavte.mp3';
 
-  const iconImageUrl = 'https://via.placeholder.com/128x128/4ade80/ffffff?text=Omnitrix';
-  const activateSoundUrl = 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg';
+const Timer = () => {
+  const alienImages = [null, alien1, alien2, alien3, alien4, alien5];
+
+  const iconImageUrl = iconImage;
+  const activateSoundUrl = activateSound;
 
   // API Configuration - UPDATE THIS WITH YOUR BACKEND URL
   const API_BASE_URL = 'http://localhost:3001/api';
@@ -36,7 +36,7 @@ const Timer = () => {
   const syncIntervalRef = useRef(null);
 
   const alarms = React.useMemo(() => [
-    { time: "09:46", message: "Breakfast Time! Fuel up for the hackathon!", alien: 1 },
+    { time: "09:52", message: "Breakfast Time! Fuel up for the hackathon!", alien: 1 },
     { time: "19:18", message: "Lunch Time! Take a break and recharge!", alien: 2 },
     { time: "19:19", message: "Snack Break! Keep the energy flowing!", alien: 3 },
     { time: "20:00", message: "Dinner Time! Almost there, champion!", alien: 4 },
